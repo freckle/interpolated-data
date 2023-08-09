@@ -1,0 +1,61 @@
+name: interpolated-data
+version: 0.0.0.1
+maintainer: Freckle Education
+category: Utils
+github: freckle/interoplated-data
+synopsis: Safe runtime interpolation of data structures
+description: Please see README.md
+
+extra-doc-files:
+  - README.md
+  - CHANGELOG.md
+
+ghc-options:
+  - -Weverything
+  - -Wno-all-missed-specialisations
+  - -Wno-missing-exported-signatures # re-enables missing-signatures
+  - -Wno-missing-import-lists
+  - -Wno-missing-local-signatures
+  - -Wno-monomorphism-restriction
+  - -Wno-safe
+  - -Wno-unsafe
+
+when:
+  - condition: "impl(ghc >= 9.2)"
+    ghc-options:
+      - -Wno-missing-kind-signatures
+  - condition: "impl(ghc >= 8.10)"
+    ghc-options:
+      - -Wno-missing-safe-haskell-mode
+      - -Wno-prepositive-qualified-module
+
+dependencies:
+  - base < 5
+
+default-extensions:
+  - DerivingStrategies
+  - LambdaCase
+  - NoImplicitPrelude
+  - OverloadedStrings
+  - RecordWildCards
+  - TypeApplications
+
+library:
+  source-dirs: src
+  dependencies:
+    - text
+
+tests:
+  spec:
+    main: Spec.hs
+    source-dirs: tests
+    dependencies:
+      - hspec
+      - interpolated-data
+
+  readme:
+    main: README.lhs
+    ghc-options: -pgmL markdown-unlit
+    dependencies:
+      - interpolated-data
+      - markdown-unlit
