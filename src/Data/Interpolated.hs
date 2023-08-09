@@ -1,5 +1,4 @@
 {-# LANGUAGE DeriveFunctor #-}
-{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -17,48 +16,18 @@ import Prelude
 
 import Control.Monad ((<=<))
 import Data.Aeson
-import Data.Bifunctor (second)
 import Data.Foldable (toList)
-import Data.Function ((&))
 import Data.Hashable (Hashable)
-import Data.List.NonEmpty (NonEmpty (..))
+import Data.Interpolated.Error
+import Data.Interpolated.InterpolationContext
+import Data.Interpolated.ToInterpolated
 import qualified Data.List.NonEmpty as NE
 import Data.Proxy (Proxy (..))
 import Data.Semigroup (Endo (..))
-import Data.Set (Set, (\\))
-import qualified Data.Set as Set
+import Data.Set ((\\))
 import Data.String (IsString (..))
-import Data.Text (Text, pack, unpack)
+import Data.Text (Text)
 import qualified Data.Text as T
-
-class InterpolationContext context where
-  interpolationVariables :: Proxy context -> Set Text
-  interpolationValues :: context -> [(Text, Text)]
-
-class ToInterpolated a where
-  getVariables :: a -> Set Text
-  runReplacement :: (Text -> Text) -> a -> a
-
-instance ToInterpolated Text where
-  getVariables = go
-   where
-    go x
-      | T.null x = Set.empty
-      | otherwise =
-          x -- "...-{foo}-{bar}-..."
-            & T.dropWhile (/= '{') -- "{foo}-{bar}-..."
-            & T.drop 1 --  "foo}-{bar}-..."
-            & T.breakOn "}" -- ("foo", "}-{bar}-...")
-            & second (go . T.drop 1) -- ("foo", Set{bar,...})
-            & \(var, rest) ->
-              if T.null var
-                then rest -- likely empty too
-                else Set.insert var rest -- Set{foo,bar,...}
-  runReplacement = id
-
-instance ToInterpolated String where
-  getVariables = getVariables . pack
-  runReplacement f = unpack . f . pack
 
 newtype InterpolatedBy a context = Interpolated
   { unInterpolated :: a
@@ -94,33 +63,16 @@ toInterpolated
   => a
   -> Either String (a `InterpolatedBy` context)
 toInterpolated a =
-  maybe (Right $ Interpolated a) (Left . errorMessage) $
-    NE.nonEmpty $
-      toList $
-        want
-          \\ have
+  maybe
+    (Right $ Interpolated a)
+    (Left . interpolatedErrorMessage . UnexpectedVariables have)
+    mMissing
  where
   have = interpolationVariables $ Proxy @context
-  want = getVariables a
-  errorMessage missing =
-    unpack $
-      "Interpolation uses "
-        <> theVariablesWhichAre missing
-        <> " not available in the provided context ("
-        <> T.intercalate ", " (toList have)
-        <> ")"
-
-  theVariablesWhichAre = \case
-    (x :| []) -> "the variable " <> x <> ", which is"
-    ne -> "the variables " <> commaAnd ne <> ", which are"
-
-  -- https://codegolf.stackexchange.com/a/37725
-  commaAnd :: NonEmpty Text -> Text
-  commaAnd = \case
-    (x :| []) -> x
-    (x :| [y]) -> x <> " and " <> y
-    (x :| [y, z]) -> x <> ", " <> commaAnd (y <> "," :| [z])
-    (x :| (y : ys)) -> x <> ", " <> commaAnd (y :| ys)
+  mMissing =
+    NE.nonEmpty $
+      toList $
+        getVariables a \\ have
 
 interpolate
   :: (InterpolationContext context, ToInterpolated a)

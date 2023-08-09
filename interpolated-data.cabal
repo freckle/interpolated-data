@@ -26,6 +26,10 @@ source-repository head
 library
   exposed-modules:
       Data.Interpolated
+      Data.Interpolated.Error
+      Data.Interpolated.InterpolationContext
+      Data.Interpolated.Parser
+      Data.Interpolated.ToInterpolated
   other-modules:
       Paths_interpolated_data
   hs-source-dirs:
