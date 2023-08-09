@@ -38,6 +38,10 @@ class AsInterpolated a where
   interpolatedVariables :: a -> Set Text
   runInterpolation :: (Text -> Text) -> a -> a
 
+instance AsInterpolated a => AsInterpolated (Interpolated context a) where
+  interpolatedVariables = interpolatedVariables . unInterpolated
+  runInterpolation f = Interpolated . runInterpolation f . unInterpolated
+
 instance AsInterpolated Text where
   interpolatedVariables = go
    where
