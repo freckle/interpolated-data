@@ -107,7 +107,7 @@ instance InterpolationContext AppEnvContext where
 ```
 
 A valid `InterpolationContext` can say statically what keys it provides. It does
-this by defining `interpolationValues :: Proxy context -> Set Text`:
+this by defining `interpolationVariables :: Proxy context -> Set Text`:
 
 ```haskell
   interpolationVariables _ = Set.fromList ["app", "env"]
@@ -143,9 +143,9 @@ instance InterpolationContext AppContext where
 ## `ToInterpolated`
 
 The `ToInterpolated` class is used for input values that contain interpolations.
-If using a basic string-line type (e.g. `Text`) we provide that instance.
+If using a basic string-like type (e.g. `Text`) we provide that instance.
 `GeneralizedNewtypeDeriving` can be used to supply an instance for your own
-string-line types as well:
+string-like types as well:
 
 ```haskell
 newtype StackName = StackName Text
