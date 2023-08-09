@@ -1,0 +1,4 @@
+stackName: "{app}-{env}-{region}"
+repository:
+  registry: "hub.docker.io"
+  name: "apps/{app}"

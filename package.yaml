@@ -43,19 +43,26 @@ default-extensions:
 library:
   source-dirs: src
   dependencies:
+    - aeson
+    - containers
+    - hashable
     - text
 
 tests:
-  spec:
-    main: Spec.hs
-    source-dirs: tests
-    dependencies:
-      - hspec
-      - interpolated-data
+  # spec:
+  #   main: Spec.hs
+  #   source-dirs: tests
+  #   dependencies:
+  #     - hspec
+  #     - interpolated-data
 
   readme:
     main: README.lhs
     ghc-options: -pgmL markdown-unlit
     dependencies:
+      - aeson
+      - containers
       - interpolated-data
       - markdown-unlit
+      - text
+      - yaml
