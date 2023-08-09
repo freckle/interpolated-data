@@ -5,6 +5,8 @@
 [![Stackage LTS](http://stackage.org/package/interpolated-data/badge/lts)](http://stackage.org/lts/package/interpolated-data)
 [![CI](https://github.com/freckle/interpolated-data/actions/workflows/ci.yml/badge.svg)](https://github.com/freckle/interpolated-data/actions/workflows/ci.yml)
 
+:warning: **Work in progress**
+
 <!--
 ```haskell
 {-# LANGUAGE DeriveAnyClass #-}
