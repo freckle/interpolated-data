@@ -3,11 +3,12 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeOperators #-}
 
 module Data.Interpolated
   ( InterpolationContext (..)
-  , AsInterpolated (..)
-  , Interpolated
+  , ToInterpolated (..)
+  , InterpolatedBy
   , interpolate
   )
 where
@@ -34,16 +35,12 @@ class InterpolationContext context where
   interpolationVariables :: Proxy context -> Set Text
   interpolationValues :: context -> [(Text, Text)]
 
-class AsInterpolated a where
-  interpolatedVariables :: a -> Set Text
-  runInterpolation :: (Text -> Text) -> a -> a
+class ToInterpolated a where
+  getVariables :: a -> Set Text
+  runReplacement :: (Text -> Text) -> a -> a
 
-instance AsInterpolated a => AsInterpolated (Interpolated context a) where
-  interpolatedVariables = interpolatedVariables . unInterpolated
-  runInterpolation f = Interpolated . runInterpolation f . unInterpolated
-
-instance AsInterpolated Text where
-  interpolatedVariables = go
+instance ToInterpolated Text where
+  getVariables = go
    where
     go x
       | T.null x = Set.empty
@@ -57,41 +54,45 @@ instance AsInterpolated Text where
               if T.null var
                 then rest -- likely empty too
                 else Set.insert var rest -- Set{foo,bar,...}
-  runInterpolation = id
+  runReplacement = id
 
-instance AsInterpolated String where
-  interpolatedVariables = interpolatedVariables . pack
-  runInterpolation f = unpack . f . pack
+instance ToInterpolated String where
+  getVariables = getVariables . pack
+  runReplacement f = unpack . f . pack
 
-newtype Interpolated context a = Interpolated
+newtype InterpolatedBy a context = Interpolated
   { unInterpolated :: a
   }
   deriving stock (Show, Functor)
   deriving newtype (Eq, Ord, Hashable, ToJSON)
 
+instance ToInterpolated a => ToInterpolated (a `InterpolatedBy` context) where
+  getVariables = getVariables . unInterpolated
+  runReplacement f = Interpolated . runReplacement f . unInterpolated
+
 instance
-  (InterpolationContext context, AsInterpolated a, FromJSON a)
-  => FromJSON (Interpolated context a)
+  (InterpolationContext context, ToInterpolated a, FromJSON a)
+  => FromJSON (a `InterpolatedBy` context)
   where
   parseJSON = either fail pure . toInterpolated <=< parseJSON
 
 instance
-  (InterpolationContext context, AsInterpolated a, FromJSON a)
-  => FromJSONKey (Interpolated context a)
+  (InterpolationContext context, ToInterpolated a, FromJSON a)
+  => FromJSONKey (a `InterpolatedBy` context)
   where
   fromJSONKey = FromJSONKeyValue parseJSON
 
 instance
-  (InterpolationContext context, AsInterpolated a, IsString a)
-  => IsString (Interpolated context a)
+  (InterpolationContext context, ToInterpolated a, IsString a)
+  => IsString (a `InterpolatedBy` context)
   where
   fromString = either error id . toInterpolated . fromString
 
 toInterpolated
   :: forall context a
-   . (InterpolationContext context, AsInterpolated a)
+   . (InterpolationContext context, ToInterpolated a)
   => a
-  -> Either String (Interpolated context a)
+  -> Either String (a `InterpolatedBy` context)
 toInterpolated a =
   maybe (Right $ Interpolated a) (Left . errorMessage) $
     NE.nonEmpty $
@@ -100,7 +101,7 @@ toInterpolated a =
           \\ have
  where
   have = interpolationVariables $ Proxy @context
-  want = interpolatedVariables a
+  want = getVariables a
   errorMessage missing =
     unpack $
       "Interpolation uses "
@@ -122,11 +123,11 @@ toInterpolated a =
     (x :| (y : ys)) -> x <> ", " <> commaAnd (y :| ys)
 
 interpolate
-  :: (InterpolationContext context, AsInterpolated a)
+  :: (InterpolationContext context, ToInterpolated a)
   => context
-  -> Interpolated context a
+  -> a `InterpolatedBy` context
   -> a
-interpolate ic = runInterpolation go . unInterpolated
+interpolate ic = runReplacement go . unInterpolated
  where
   go :: Text -> Text
   go =
