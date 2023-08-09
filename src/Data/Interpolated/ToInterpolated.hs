@@ -11,13 +11,13 @@ import Data.Set (Set)
 import Data.Text (Text, pack, unpack)
 
 class ToInterpolated a where
-  getVariables :: a -> Set Text
+  parseVariables :: a -> Either String (Set Text)
   runReplacement :: (Text -> Text) -> a -> a
 
 instance ToInterpolated Text where
-  getVariables = parseInterpolatedText
+  parseVariables = parseInterpolatedText
   runReplacement = id
 
 instance ToInterpolated String where
-  getVariables = getVariables . pack
+  parseVariables = parseVariables . pack
   runReplacement f = unpack . f . pack

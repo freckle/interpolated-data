@@ -179,15 +179,14 @@ Since it's not a string-like type, we'll need to create an instance by hand:
 instance ToInterpolated EcrRepository where
 ```
 
-The `getVariables :: a -> Set Text` member says how to get all in-use
-interpolation variables from the given value. In this case, that means to take
-all the keys across its two fields by the same function:
+The `parseVariables :: a -> Either String (Set Text)` member says how to get all
+in-use interpolation variables from the given value. In this case, that means to
+take all the keys across its two fields by the same function:
 
 ```haskell
-  getVariables EcrRepository {..} = mconcat
-    [ getVariables registry
-    , getVariables name
-    ]
+  parseVariables EcrRepository {..} = (<>)
+    <$> parseVariables registry
+    <*> parseVariables name
 ```
 
 The second member is `runReplacement :: (Text -> Text) -> a -> a` and it says

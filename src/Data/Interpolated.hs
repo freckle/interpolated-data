@@ -16,7 +16,7 @@ import Prelude
 
 import Control.Monad ((<=<))
 import Data.Aeson
-import Data.Foldable (toList)
+import Data.Foldable (toList, traverse_)
 import Data.Hashable (Hashable)
 import Data.Interpolated.Error
 import Data.Interpolated.InterpolationContext
@@ -36,7 +36,7 @@ newtype InterpolatedBy a context = Interpolated
   deriving newtype (Eq, Ord, Hashable, ToJSON)
 
 instance ToInterpolated a => ToInterpolated (a `InterpolatedBy` context) where
-  getVariables = getVariables . unInterpolated
+  parseVariables = parseVariables . unInterpolated
   runReplacement f = Interpolated . runReplacement f . unInterpolated
 
 instance
@@ -62,17 +62,13 @@ toInterpolated
    . (InterpolationContext context, ToInterpolated a)
   => a
   -> Either String (a `InterpolatedBy` context)
-toInterpolated a =
-  maybe
-    (Right $ Interpolated a)
-    (Left . interpolatedErrorMessage . UnexpectedVariables have)
-    mMissing
+toInterpolated a = do
+  want <- parseVariables a
+  let mMissing = NE.nonEmpty $ toList $ want \\ have
+  Interpolated a <$ traverse_ (Left . errorMessage) mMissing
  where
   have = interpolationVariables $ Proxy @context
-  mMissing =
-    NE.nonEmpty $
-      toList $
-        getVariables a \\ have
+  errorMessage = interpolatedErrorMessage . UnexpectedVariables have
 
 interpolate
   :: (InterpolationContext context, ToInterpolated a)

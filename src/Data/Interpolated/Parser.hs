@@ -11,8 +11,8 @@ import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as T
 
-parseInterpolatedText :: Text -> Set Text
-parseInterpolatedText = go
+parseInterpolatedText :: Text -> Either String (Set Text)
+parseInterpolatedText = Right . go
  where
   go x
     | T.null x = Set.empty
