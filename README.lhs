@@ -7,7 +7,27 @@
 
 :warning: **Work in progress**
 
+There are [many, many interpolation libraries][hackage-search] on Hackage, but
+they are exclusively:
+
+[hackage-search]: https://hackage.haskell.org/packages/search?terms=interpolate
+
+1. For building interpolated strings at compile-time, through quasi-quotation
+2. For building only string (or string-like) types
+
+This library is different. It aims to better support cases where:
+
+1. The interpolated data may be provided at runtime, such as from a
+   configuration file or web request
+2. The interpolated data is structured, such as a record of fields of
+   interpolated data
+3. You can state statically in the types what interpolation keys (called a
+   "context") will be available, so we can validate the runtime input
+
+Let's build a motivating example.
+
 <!--
+
 ```haskell
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
@@ -27,27 +47,10 @@ import Data.Text
 import qualified Data.Yaml as Yaml
 import GHC.Generics (Generic)
 import Text.Markdown.Unlit ()
+
 ```
 -->
 
-There are [many, many interpolation libraries][hackage-search] on Hackage, but
-they are exclusively:
-
-[hackage-search]: https://hackage.haskell.org/packages/search?terms=interpolate
-
-1. For building interpolated strings at compile-time, through quasi-quotation
-2. For building only string (or string-like) types
-
-This library is different. It aims to better support cases where:
-
-1. The interpolated data may be provided at runtime, such as from a
-   configuration file or web request
-2. The interpolated data is structured, such as a record of fields of
-   interpolated data
-3. You can state statically in the types what interpolation keys (called a
-   "context") will be available, so we can validate the runtime input
-
-Let's build a motivating example.
 
 ```haskell
 import Data.Interpolated
@@ -75,8 +78,10 @@ fields of `repository` support only `app` (deployment images are reused from
 `env` to `env`, of course). One key feature of our library is making that safe
 through a combination of compile- and runtime validations.
 
-To eventually supply values for these interpolations, we have to define types
-that are instances of `InterpolationContext`:
+## `InterpolationContext`
+
+To supply values for interpolations, we have to define types that are instances
+of `InterpolationContext`:
 
 <!--
 ```haskell
@@ -99,12 +104,33 @@ data AppEnvContext = AppEnvContext
   }
 
 instance InterpolationContext AppEnvContext where
+```
+
+A valid `InterpolationContext` can say statically what keys it provides. It does
+this by defining `interpolationValues :: Proxy context -> Set Text`:
+
+```haskell
   interpolationVariables _ = Set.fromList ["app", "env"]
+```
+
+This function operates on `Proxy` so that we can use it at construction-time,
+before we have any supplied context, to verify we're constructing an
+interpolation that can indeed be satisfied.
+
+And when it comes time to provide the values, that would be through the
+`interpolationValues :: context -> [(Text, Text)]` member:
+
+```haskell
   interpolationValues AppEnvContext {..} =
     [ ("app", unAppName app)
     , ("env", unEnvironment env)
     ]
+```
 
+And to satisfy our hypothetical use-case, we'll make a second type for the
+context where only `app` is available:
+
+```haskell
 newtype AppContext = AppContext
   { app :: AppName
   }
@@ -114,9 +140,12 @@ instance InterpolationContext AppContext where
   interpolationValues AppContext {..} = [("app", unAppName app)]
 ```
 
-Next, we need to make types "interpolate-able" by giving them instances of
-`ToInterpolated`. There exists instances for string-like types, so any newtypes
-can derive this instance:
+## `ToInterpolated`
+
+The `ToInterpolated` class is used for input values that contain interpolations.
+If using a basic string-line type (e.g. `Text`) we provide that instance.
+`GeneralizedNewtypeDeriving` can be used to supply an instance for your own
+string-line types as well:
 
 ```haskell
 newtype StackName = StackName Text
@@ -132,10 +161,7 @@ newtype Dockerfile = Dockerfile FilePath
   deriving newtype (FromJSON, ToInterpolated)
 ```
 
-Our `EcrRepository` can also be interpolated, which would work as you might
-imagine (interpolating each of its fields). Such records could also derive
-`ToInterpolated` generically\*, but again we'll define it by hand so you can see
-how it works:
+`EcrRepository` is an example of structured data that supports interpolation.
 
 ```haskell
 data EcrRepository = EcrRepository
@@ -146,26 +172,40 @@ data EcrRepository = EcrRepository
   deriving anyclass FromJSON
 ```
 
+Since it's not a string-like type, we'll need to create an instance by hand:
+
+
 ```haskell
 instance ToInterpolated EcrRepository where
+```
+
+The `getVariables :: a -> Set Text` member says how to get all in-use
+interpolation variables from the given value. In this case, that means to take
+all the keys across its two fields by the same function:
+
+```haskell
   getVariables EcrRepository {..} = mconcat
     [ getVariables registry
     , getVariables name
     ]
+```
 
+The second member is `runReplacement :: (Text -> Text) -> a -> a` and it says
+how to replace the interpolations across the structure. In this case, that means
+to replace them in each field by the same mechanism:
+
+```haskell
   runReplacement f er = er
     { registry = runReplacement f $ registry er
     , name = runReplacement f $ name er
     }
 ```
 
-When we wrap an interpolate-able type (one with `ToInterpolated`) with the
-concrete `InterpolatedBy` constructor, we must say what interpolated values it
-wants by providing a phantom variable for the `context` too.
+## `InterpolatedBy`
 
-When we construct such a value, we will verify it only uses interpolations
-provided by the `context`. Conveniently, construction via generic `FromJSON`
-will include this validation:
+Defining a type as ``a `InterpolatedBy` context`` is how we ensure safe
+construction (and use). We validate that the `context` we specify supplies the
+variables `a` uses by calling the type-class functions described above.
 
 ```haskell
 data Settings = Settings
@@ -177,8 +217,9 @@ data Settings = Settings
   deriving anyclass FromJSON
 ```
 
-Therefore, when we parse some Yaml, values containing an invalid variable will
-throw an informative error:
+Conveniently, construction via generic `FromJSON` will include this validation.
+Therefore, when we parse our user's configuration, they'll receive an
+informative error:
 
 ```haskell
 example1 :: IO (Either String Settings)
@@ -192,12 +233,20 @@ example1 =
 Error in $.stackName: Interpolation uses the variable region, which is not available in the provided context (app, env)
 ```
 
-Even valid values can't use the wrong `context` without that being a type-error:
+## Type-safety
+
+As authors of this deployment tool, we will be required to interpolate these
+values to get what we need to perform our logic. Since the values are tagged
+with `context`, if we make a mistake and provide the wrong one, that is a
+type-error:
 
 ```hs
 example2 :: IO StackName
 example2 = do
+  -- stackName is :: ... `InterpolatedBy` AppEnvContext
   Settings {..} <- Yaml.decodeFileThrow "files/valid.yaml"
+
+  -- Using AppContext by mistake should fail to compile
   pure $ interpolate (AppContext {app="my-app"}) stackName
 ```
 
@@ -215,7 +264,7 @@ example2 = do
     |
 ```
 
-But providing the right context works as expected:
+Providing the right context compiles and works as expected:
 
 ```haskell
 example3 :: IO StackName
@@ -228,6 +277,8 @@ example3 = do
 λ> print =<< example3
 StackName "my-app-prod"
 ```
+
+And just as nicely for structured data:
 
 ```haskell
 example4 :: IO EcrRepository
