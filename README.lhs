@@ -32,6 +32,8 @@ import Text.Markdown.Unlit ()
 There are [many, many interpolation libraries][hackage-search] on Hackage, but
 they are exclusively:
 
+[hackage-search]: https://hackage.haskell.org/packages/search?terms=interpolate
+
 1. For building interpolated strings at compile-time, through quasi-quotation
 2. For building only string (or string-like) types
 
