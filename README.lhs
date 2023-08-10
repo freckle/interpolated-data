@@ -39,6 +39,7 @@ module Main (main) where
 
 import Prelude
 
+import Control.Monad (void)
 import Data.Aeson (FromJSON)
 import Data.Bifunctor (first)
 import qualified Data.Set as Set
@@ -46,6 +47,7 @@ import Data.String (IsString(..))
 import Data.Text
 import qualified Data.Yaml as Yaml
 import GHC.Generics (Generic)
+import Test.Hspec
 import Text.Markdown.Unlit ()
 
 ```
@@ -149,15 +151,15 @@ string-like types as well:
 
 ```haskell
 newtype StackName = StackName Text
-  deriving stock Show
+  deriving stock (Eq, Show)
   deriving newtype (FromJSON, ToInterpolated)
 
 newtype EcrRegistry = EcrRegistry Text
-  deriving stock Show
+  deriving stock (Eq, Show)
   deriving newtype (FromJSON, ToInterpolated)
 
 newtype Dockerfile = Dockerfile FilePath
-  deriving stock Show
+  deriving stock (Eq, Show)
   deriving newtype (FromJSON, ToInterpolated)
 ```
 
@@ -168,12 +170,11 @@ data EcrRepository = EcrRepository
   { registry :: EcrRegistry
   , name :: Text
   }
-  deriving stock (Show, Generic)
+  deriving stock (Eq, Show, Generic)
   deriving anyclass FromJSON
 ```
 
 Since it's not a string-like type, we'll need to create an instance by hand:
-
 
 ```haskell
 instance ToInterpolated EcrRepository where
@@ -221,15 +222,25 @@ Therefore, when we parse our user's configuration, they'll receive an
 informative error:
 
 ```haskell
-example1 :: IO (Either String Settings)
-example1 =
-  first Yaml.prettyPrintParseException
-    <$> Yaml.decodeFileEither "files/invalid.yaml"
-```
+spec1 :: Spec
+spec1 = do
+  it "fails informatively" $ do
+    let
+      result =
+        void
+          $ first Yaml.prettyPrintParseException
+          $ Yaml.decodeEither' @Settings $ mconcat
+            [ "stackName: '{app}-{env}-{region}'\n"
+            , "repository:\n"
+            , "  registry: 'hub.docker.io'\n"
+            , "  name: 'apps/{app}'\n"
+            ]
 
-```console
-λ> either putStrLn print =<< example1
-Error in $.stackName: Interpolation uses the variable region, which is not available in the provided context (app, env)
+    result `shouldBe` Left (mconcat
+      [ "Aeson exception:\n"
+      , "Error in $.stackName: Interpolation uses the variable region, "
+      , "which is not available in the provided context (app, env)"
+      ])
 ```
 
 ## Type-safety
@@ -237,67 +248,41 @@ Error in $.stackName: Interpolation uses the variable region, which is not avail
 As authors of this deployment tool, we will be required to interpolate these
 values to get what we need to perform our logic. Since the values are tagged
 with `context`, if we make a mistake and provide the wrong one, that is a
-type-error:
-
-```hs
-example2 :: IO StackName
-example2 = do
-  -- stackName is :: ... `InterpolatedBy` AppEnvContext
-  Settings {..} <- Yaml.decodeFileThrow "files/valid.yaml"
-
-  -- Using AppContext by mistake should fail to compile
-  pure $ interpolate (AppContext {app="my-app"}) stackName
-```
-
-```
-    • Couldn't match type ‘AppEnvContext’ with ‘AppContext’
-      Expected: InterpolatedBy StackName AppContext
-        Actual: InterpolatedBy StackName AppEnvContext
-    • In the second argument of ‘interpolate’, namely ‘stackName’
-      In the second argument of ‘($)’, namely
-        ‘interpolate (AppContext {app = "my-app"}) stackName’
-      In a stmt of a 'do' block:
-        pure $ interpolate (AppContext {app = "my-app"}) stackName
-    |
-201 |   pure $ interpolate (AppContext {app="my-app"}) stackName
-    |
-```
-
-Providing the right context compiles and works as expected:
+type-error. Providing the right context compiles and works as expected:
 
 ```haskell
-example3 :: IO StackName
-example3 = do
-  Settings {..} <- Yaml.decodeFileThrow "files/valid.yaml"
-  pure $ interpolate (AppEnvContext {app="my-app", env="prod"}) stackName
-```
+spec2 :: Spec
+spec2 = do
+  it "interpolates throughout" $ do
+    let
+      context1 = AppEnvContext { app = "my-app" , env="prod" }
+      context2 = AppContext { app="my-app" }
+      result =
+        first Yaml.prettyPrintParseException
+          $ Yaml.decodeEither' @Settings $ mconcat
+            [ "stackName: '{app}-{env}'\n"
+            , "repository:\n"
+            , "  registry: 'hub.docker.io'\n"
+            , "  name: 'apps/{app}'\n"
+            ]
 
-```console
-λ> print =<< example3
-StackName "my-app-prod"
-```
+    -- Incorrectly using context2 here would fail to compile
+    (interpolate context1 . stackName <$> result)
+      `shouldBe` Right (StackName "my-app-prod")
 
-And just as nicely for structured data:
-
-```haskell
-example4 :: IO EcrRepository
-example4 = do
-  Settings {..} <- Yaml.decodeFileThrow "files/valid.yaml"
-  pure $ interpolate (AppContext {app="my-app"}) repository
-```
-
-```console
-λ> print =<< example4
-EcrRepository {registry = EcrRegistry "hub.docker.io", name = "apps/my-app"}
+    (interpolate context2 . repository <$> result)
+      `shouldBe` Right (EcrRepository
+        { registry = EcrRegistry "hub.docker.io"
+        , name = "apps/my-app"
+        })
 ```
 
 <!--
 ```haskell
 main :: IO ()
-main = do
-  either putStrLn print =<< example1
-  print =<< example3
-  print =<< example4
+main = hspec $ do
+  spec1
+  spec2
 ```
 -->
 
