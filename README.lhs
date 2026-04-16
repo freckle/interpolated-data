@@ -48,7 +48,6 @@ import Data.Text
 import qualified Data.Yaml as Yaml
 import GHC.Generics (Generic)
 import Test.Hspec
-import Text.Markdown.Unlit ()
 
 ```
 -->

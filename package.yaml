@@ -64,6 +64,7 @@ tests:
       - containers
       - hspec
       - interpolated-data
-      - markdown-unlit
       - text
       - yaml
+    build-tools:
+      - markdown-unlit
