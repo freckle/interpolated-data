@@ -1,5 +1,8 @@
 # interpolated-data
 
+ > [!WARNING]
+ > This repository is archived and no longer maintained.
+
 [![Hackage](https://img.shields.io/hackage/v/interpolated-data.svg?style=flat)](https://hackage.haskell.org/package/interpolated-data)
 [![Stackage Nightly](http://stackage.org/package/interpolated-data/badge/nightly)](http://stackage.org/nightly/package/interpolated-data)
 [![Stackage LTS](http://stackage.org/package/interpolated-data/badge/lts)](http://stackage.org/lts/package/interpolated-data)
